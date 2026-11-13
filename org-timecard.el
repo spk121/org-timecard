@@ -15,20 +15,23 @@
 ;;; Commentary:
 
 ;; A week of work is recorded in an Org file.  Each task is a headline
-;; carrying exactly two tags, in this order: the charge number, then
-;; the labor type.  Time is recorded with the usual Org clock commands.
+;; carrying two tags, in this order: the charge number, then the labor
+;; type.  An optional third tag gives the priority: high, medium or
+;; low.  A task without one is medium.  Time is recorded with the usual
+;; Org clock commands.
 ;;
 ;;     **** Laser Assemblies                                :B101:design:
 ;;     :LOGBOOK:
 ;;     CLOCK: [2026-11-12 Thu 09:25]--[2026-11-12 Thu 19:25] => 10:00
 ;;     :END:
 ;;
-;; Three reports are built from the clock lines:
+;; Four reports are built from the clock lines:
 ;;
-;;   M-x org-timecard-log-report     time ranges in chronological order
-;;   M-x org-timecard-charge-report  hours per day per charge number
-;;   M-x org-timecard-labor-report   hours per day per labor type
-;;   M-x org-timecard-report         all three
+;;   M-x org-timecard-log-report       time ranges in chronological order
+;;   M-x org-timecard-charge-report    hours per day per charge number
+;;   M-x org-timecard-labor-report     hours per day per labor type
+;;   M-x org-timecard-priority-report  share of each day per priority
+;;   M-x org-timecard-report           all four
 ;;
 ;; The same tables can be kept inside the Org file as dynamic blocks,
 ;; refreshed with C-c C-c on the #+BEGIN line:
@@ -36,13 +39,17 @@
 ;;     #+BEGIN: timecard :report charge
 ;;     #+END:
 ;;
-;; where :report is one of log, charge or labor.
+;; where :report is one of log, charge, labor or priority.
 ;;
 ;; The log report also warns about time ranges that overlap, and notes
 ;; gaps between ranges shorter than `org-timecard-gap-minutes'.
 ;;
 ;; The reports cover the accessible part of the buffer, so narrowing to
 ;; a subtree restricts them to that subtree.
+;;
+;; M-x org-timecard-reminder-mode flashes the screen as a reminder to
+;; update the timecard once Emacs has been idle, with no keyboard or
+;; mouse input, for `org-timecard-reminder-minutes'.
 
 ;;; Code:
 
@@ -69,6 +76,26 @@ A gap between one time range and the next that is shorter than this is
 noted in the report.  Longer gaps are taken to be time off between
 shifts and are not mentioned.")
 
+(defconst org-timecard-priorities '("high" "medium" "low")
+  "The priorities a task can have, in the order the report lists them.")
+
+(defconst org-timecard-default-priority "medium"
+  "Priority of a task that has no priority tag.")
+
+(defcustom org-timecard-percent-format "%.0f%%"
+  "Format string used to print a percentage."
+  :type 'string)
+
+(defconst org-timecard-reminder-minutes 60
+  "Minutes of idle time after which `org-timecard-reminder-mode' flashes.
+Idle time is the time since the last keyboard or mouse input.")
+
+(defconst org-timecard-reminder-flashes 2
+  "Number of times the screen flashes for a timecard reminder.")
+
+(defconst org-timecard-reminder-flash-seconds 0.15
+  "Seconds each half of a reminder flash lasts.")
+
 (defcustom org-timecard-buffer-name "*Org Timecard*"
   "Name of the buffer in which the report commands show their tables."
   :type 'string)
@@ -78,7 +105,8 @@ shifts and are not mentioned.")
 (defun org-timecard--entries ()
   "Return the closed clock entries of the current buffer, oldest first.
 Each entry is a plist with keys :start and :end (Lisp time values),
-:task, :charge and :labor (strings).  Running clocks are ignored."
+:task, :charge, :labor and :priority (strings).  Running clocks are
+ignored."
   (let ((entries
          (org-element-map (org-element-parse-buffer) 'clock
            (lambda (clock)
@@ -91,10 +119,19 @@ Each entry is a plist with keys :start and :end (Lisp time values),
                          :end (org-timestamp-to-time ts t)
                          :task (org-element-property :raw-value hl)
                          :charge (or (nth 0 tags) org-timecard-missing)
-                         :labor (or (nth 1 tags) org-timecard-missing)))))))))
+                         :labor (or (nth 1 tags) org-timecard-missing)
+                         :priority (org-timecard--priority
+                                    (nth 2 tags))))))))))
     (sort entries
           (lambda (a b)
             (time-less-p (plist-get a :start) (plist-get b :start))))))
+
+(defun org-timecard--priority (tag)
+  "Return the priority named by TAG, a string or nil.
+The result is a member of `org-timecard-priorities'.  It is
+`org-timecard-default-priority' when TAG is nil or not a priority."
+  (or (and tag (car (member (downcase tag) org-timecard-priorities)))
+      org-timecard-default-priority))
 
 (defun org-timecard--day-slices (start end)
   "Split the time range START to END at each midnight.
@@ -210,8 +247,44 @@ KEY is :charge or :labor."
        (mapcar (lambda (day) (funcall row day (list day))) days)
        (list 'hline (funcall row "Total" days))))))
 
+(defun org-timecard--percent (seconds total)
+  "Format SECONDS as a percentage of TOTAL, or as an empty string when zero."
+  (if (or (zerop seconds) (zerop total)) ""
+    (format org-timecard-percent-format (/ (* 100.0 seconds) total))))
+
+(defun org-timecard--priority-table (entries)
+  "Return a table of the share of each day ENTRIES spend on each priority.
+Each row gives the percentage of that day's clocked time."
+  (let ((cells (make-hash-table :test #'equal)) ; (day . priority) -> seconds
+        days)
+    (dolist (e entries)
+      (dolist (slice (org-timecard--day-slices (plist-get e :start)
+                                               (plist-get e :end)))
+        (cl-pushnew (car slice) days :test #'equal)
+        (cl-incf (gethash (cons (car slice) (plist-get e :priority)) cells 0)
+                 (cdr slice))))
+    (setq days (sort days #'string<))
+    (let ((row (lambda (label days)
+                 (let* ((sums (mapcar
+                               (lambda (priority)
+                                 (apply #'+ (mapcar
+                                             (lambda (day)
+                                               (gethash (cons day priority)
+                                                        cells 0))
+                                             days)))
+                               org-timecard-priorities))
+                        (total (apply #'+ sums)))
+                   (cons label
+                         (mapcar (lambda (sum)
+                                   (org-timecard--percent sum total))
+                                 sums))))))
+      (append
+       (list (cons "Day" (mapcar #'capitalize org-timecard-priorities)) 'hline)
+       (mapcar (lambda (day) (funcall row day (list day))) days)
+       (list 'hline (funcall row "All days" days))))))
+
 (defun org-timecard--render (report)
-  "Return the text of REPORT, one of the symbols log, charge or labor.
+  "Return the text of REPORT: log, charge, labor or priority, a symbol.
 The text is an aligned Org table.  For the log report it is followed by
 a list of overlap warnings and gap notes, if there are any."
   (let* ((entries (org-timecard--entries))
@@ -219,6 +292,7 @@ a list of overlap warnings and gap notes, if there are any."
                   ('log (org-timecard--log-table entries))
                   ('charge (org-timecard--pivot-table entries :charge))
                   ('labor (org-timecard--pivot-table entries :labor))
+                  ('priority (org-timecard--priority-table entries))
                   (_ (user-error "Unknown timecard report: %s" report))))
          (notes (and (eq report 'log) (org-timecard--log-notes entries))))
     (with-temp-buffer
@@ -236,7 +310,8 @@ a list of overlap warnings and gap notes, if there are any."
 (defconst org-timecard--titles
   '((log . "Time log")
     (charge . "Hours by day and charge number")
-    (labor . "Hours by day and labor type")))
+    (labor . "Hours by day and labor type")
+    (priority . "Share of each day by priority")))
 
 (defun org-timecard--show (reports)
   "Show REPORTS, a list of report symbols, for the current buffer."
@@ -278,10 +353,16 @@ between ranges that is shorter than `org-timecard-gap-minutes'."
   (org-timecard--show '(labor)))
 
 ;;;###autoload
-(defun org-timecard-report ()
-  "Show all three timecard reports for the current Org buffer."
+(defun org-timecard-priority-report ()
+  "Show the percentage of each day spent on each priority of task."
   (interactive)
-  (org-timecard--show '(log charge labor)))
+  (org-timecard--show '(priority)))
+
+;;;###autoload
+(defun org-timecard-report ()
+  "Show all four timecard reports for the current Org buffer."
+  (interactive)
+  (org-timecard--show '(log charge labor priority)))
 
 ;;;; Dynamic block
 
@@ -289,7 +370,7 @@ between ranges that is shorter than `org-timecard-gap-minutes'."
 (defun org-dblock-write:timecard (params)
   "Write a timecard table as a dynamic block.
 PARAMS is the block's property list; :report selects the table and is
-one of log (the default), charge or labor."
+one of log (the default), charge, labor or priority."
   (let ((report (or (plist-get params :report) 'log)))
     (insert (org-timecard--render
              (if (stringp report) (intern report) report)))))
@@ -298,12 +379,44 @@ one of log (the default), charge or labor."
 (defun org-timecard-insert-dblock (report)
   "Insert a timecard dynamic block for REPORT at point."
   (interactive
-   (list (completing-read "Report: " '("log" "charge" "labor") nil t)))
+   (list (completing-read "Report: " '("log" "charge" "labor" "priority")
+                          nil t)))
   (org-create-dblock (list :name "timecard" :report (intern report)))
   (org-update-dblock))
 
 (when (fboundp 'org-dynamic-block-define)
   (org-dynamic-block-define "timecard" #'org-timecard-insert-dblock))
+
+;;;; Reminder
+
+(defvar org-timecard--reminder-timer nil
+  "The idle timer of `org-timecard-reminder-mode', or nil.")
+
+(defun org-timecard-flash ()
+  "Flash the screen as a reminder to update the timecard.
+The colors of every frame are swapped and restored
+`org-timecard-reminder-flashes' times."
+  (interactive)
+  (dotimes (i (* 2 org-timecard-reminder-flashes))
+    (run-with-timer (* i org-timecard-reminder-flash-seconds) nil
+                    #'invert-face 'default))
+  (message "Remember to update your timecard"))
+
+;;;###autoload
+(define-minor-mode org-timecard-reminder-mode
+  "Flash the screen when it is time to update the timecard.
+The flash comes once Emacs has been idle, with no keyboard or mouse
+input, for `org-timecard-reminder-minutes'.  It happens once for each
+stretch of idle time."
+  :global t
+  :group 'org-timecard
+  (when org-timecard--reminder-timer
+    (cancel-timer org-timecard--reminder-timer)
+    (setq org-timecard--reminder-timer nil))
+  (when org-timecard-reminder-mode
+    (setq org-timecard--reminder-timer
+          (run-with-idle-timer (* 60 org-timecard-reminder-minutes) t
+                               #'org-timecard-flash))))
 
 (provide 'org-timecard)
 

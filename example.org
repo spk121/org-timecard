@@ -1,11 +1,11 @@
 * Work
 ** Project1
 *** System Engineering
-**** Weekly IPT Meeting                                       :A122:status:
+**** Weekly IPT Meeting                                   :A122:status:low:
 :LOGBOOK:
 CLOCK: [2026-11-13 Fri 08:22]--[2026-11-13 Fri 19:21] => 10:59
 :END:
-**** Prepare SRR                                            :A124:analysis:
+**** Prepare SRR                                       :A124:analysis:high:
 :LOGBOOK:
 CLOCK: [2026-11-13 Fri 08:01]--[2026-11-13 Fri 08:22] =>  0:21
 CLOCK: [2026-11-10 Tue 09:23]--[2026-11-10 Tue 19:23] => 10:00
@@ -55,4 +55,15 @@ CLOCK: [2026-11-12 Thu 09:25]--[2026-11-12 Thu 19:25] => 10:00
 | 2026-11-13 Fri |     0.35 |        |            |  10.98 | 11.33 |
 |----------------+----------+--------+------------+--------+-------|
 | Total          |    10.35 |  10.00 |      10.00 |  10.98 | 41.33 |
+#+END:
+** Share of each day by priority
+#+BEGIN: timecard :report priority
+| Day            | High | Medium | Low |
+|----------------+------+--------+-----|
+| 2026-11-10 Tue | 100% |        |     |
+| 2026-11-11 Wed |      |   100% |     |
+| 2026-11-12 Thu |      |   100% |     |
+| 2026-11-13 Fri |   3% |        | 97% |
+|----------------+------+--------+-----|
+| All days       |  25% |    48% | 27% |
 #+END:

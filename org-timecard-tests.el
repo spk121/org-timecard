@@ -225,6 +225,103 @@ CLOCK: [2026-11-10 Tue 22:00]--[2026-11-11 Wed 02:30] =>  4:30
                      hline
                      ("Total" "4.50" "4.50"))))))
 
+(ert-deftest org-timecard-entries-priority ()
+  (org-timecard-tests--with-org "\
+* A :X1:ops:high:
+CLOCK: [2026-11-10 Tue 08:00]--[2026-11-10 Tue 09:00] =>  1:00
+* B :X1:ops:low:
+CLOCK: [2026-11-10 Tue 09:00]--[2026-11-10 Tue 10:00] =>  1:00
+* C :X1:ops:medium:
+CLOCK: [2026-11-10 Tue 10:00]--[2026-11-10 Tue 11:00] =>  1:00
+* D :X1:ops:
+CLOCK: [2026-11-10 Tue 11:00]--[2026-11-10 Tue 12:00] =>  1:00
+* E :X1:ops:HIGH:
+CLOCK: [2026-11-10 Tue 12:00]--[2026-11-10 Tue 13:00] =>  1:00
+* F :X1:ops:urgent:
+CLOCK: [2026-11-10 Tue 13:00]--[2026-11-10 Tue 14:00] =>  1:00
+* G
+CLOCK: [2026-11-10 Tue 14:00]--[2026-11-10 Tue 15:00] =>  1:00
+"
+    (should (equal (mapcar (lambda (e) (plist-get e :priority))
+                           (org-timecard--entries))
+                   '("high" "low" "medium" "medium" "high" "medium"
+                     "medium")))))
+
+(ert-deftest org-timecard-priority-constants ()
+  (should (equal org-timecard-priorities '("high" "medium" "low")))
+  (should (equal org-timecard-default-priority "medium")))
+
+(ert-deftest org-timecard-priority-table ()
+  (org-timecard-tests--with-org "\
+* A :X1:ops:high:
+CLOCK: [2026-11-10 Tue 08:00]--[2026-11-10 Tue 09:00] =>  1:00
+CLOCK: [2026-11-11 Wed 08:00]--[2026-11-11 Wed 12:00] =>  4:00
+* B :X1:ops:low:
+CLOCK: [2026-11-10 Tue 09:00]--[2026-11-10 Tue 10:00] =>  1:00
+* C :X1:ops:
+CLOCK: [2026-11-10 Tue 10:00]--[2026-11-10 Tue 12:00] =>  2:00
+"
+    (should (equal (org-timecard--priority-table (org-timecard--entries))
+                   '(("Day" "High" "Medium" "Low")
+                     hline
+                     ("2026-11-10 Tue" "25%" "50%" "25%")
+                     ("2026-11-11 Wed" "100%" "" "")
+                     hline
+                     ("All days" "62%" "25%" "12%"))))))
+
+(ert-deftest org-timecard-priority-table-defaults-to-medium ()
+  (org-timecard-tests--with-org org-timecard-tests--week
+    (should (equal (org-timecard--priority-table (org-timecard--entries))
+                   '(("Day" "High" "Medium" "Low")
+                     hline
+                     ("2026-11-10 Tue" "" "100%" "")
+                     ("2026-11-12 Thu" "" "100%" "")
+                     ("2026-11-13 Fri" "" "100%" "")
+                     hline
+                     ("All days" "" "100%" ""))))))
+
+(ert-deftest org-timecard-priority-table-splits-at-midnight ()
+  (org-timecard-tests--with-org "\
+* A :X1:ops:high:
+CLOCK: [2026-11-10 Tue 23:00]--[2026-11-11 Wed 01:00] =>  2:00
+* B :X1:ops:low:
+CLOCK: [2026-11-11 Wed 01:00]--[2026-11-11 Wed 04:00] =>  3:00
+"
+    (should (equal (org-timecard--priority-table (org-timecard--entries))
+                   '(("Day" "High" "Medium" "Low")
+                     hline
+                     ("2026-11-10 Tue" "100%" "" "")
+                     ("2026-11-11 Wed" "25%" "" "75%")
+                     hline
+                     ("All days" "40%" "" "60%"))))))
+
+(ert-deftest org-timecard-percent-format ()
+  (should (equal (org-timecard--percent 0 100) ""))
+  (should (equal (org-timecard--percent 0 0) ""))
+  (should (equal (org-timecard--percent 1 3) "33%"))
+  (let ((org-timecard-percent-format "%.1f%%"))
+    (should (equal (org-timecard--percent 1 3) "33.3%"))))
+
+(ert-deftest org-timecard-dblock-priority ()
+  (org-timecard-tests--with-org "\
+* A :X1:ops:high:
+CLOCK: [2026-11-10 Tue 08:00]--[2026-11-10 Tue 09:00] =>  1:00
+* B :X1:ops:
+CLOCK: [2026-11-10 Tue 09:00]--[2026-11-10 Tue 12:00] =>  3:00
+#+BEGIN: timecard :report priority
+#+END:
+"
+    (org-update-all-dblocks)
+    (should (string-match-p
+             (regexp-quote "\
+| Day            | High | Medium | Low |
+|----------------+------+--------+-----|
+| 2026-11-10 Tue |  25% |    75% |     |
+|----------------+------+--------+-----|
+| All days       |  25% |    75% |     |
+#+END:")
+             (buffer-string)))))
+
 (ert-deftest org-timecard-hours-format ()
   (should (equal (org-timecard--hours 0) ""))
   (should (equal (org-timecard--hours 5400) "1.50"))
@@ -412,13 +509,54 @@ CLOCK: [2026-11-10 Tue 09:30]--[2026-11-10 Tue 11:00] =>  1:30
                        "^\\* Hours by day and charge number$" text))
               (should (string-match-p
                        "^\\* Hours by day and labor type$" text))
-              (should (string-match-p "^| Day +| analysis " text)))))
+              (should (string-match-p
+                       "^\\* Share of each day by priority$" text))
+              (should (string-match-p "^| Day +| analysis " text))
+              (should (string-match-p "^| Day +| High | Medium | Low |$"
+                                      text)))))
       (when (get-buffer org-timecard-buffer-name)
         (kill-buffer org-timecard-buffer-name)))))
 
 (ert-deftest org-timecard-report-command-needs-org-buffer ()
   (with-temp-buffer
     (should-error (org-timecard-log-report) :type 'user-error)))
+
+;;;; Reminder
+
+(ert-deftest org-timecard-reminder-minutes-is-60 ()
+  (should (= org-timecard-reminder-minutes 60)))
+
+(ert-deftest org-timecard-reminder-mode-timer ()
+  (unwind-protect
+      (progn
+        (org-timecard-reminder-mode 1)
+        (let ((timer org-timecard--reminder-timer))
+          (should (memq timer timer-idle-list))
+          (should (= 3600 (float-time (timer--time timer))))
+          (should (timer--repeat-delay timer))
+          (should (eq (timer--function timer) #'org-timecard-flash))
+          ;; Turning it on twice must not leave a second timer behind.
+          (org-timecard-reminder-mode 1)
+          (should-not (memq timer timer-idle-list))
+          (setq timer org-timecard--reminder-timer)
+          (org-timecard-reminder-mode -1)
+          (should-not (memq timer timer-idle-list))
+          (should-not org-timecard--reminder-timer)))
+    (org-timecard-reminder-mode -1)))
+
+(ert-deftest org-timecard-flash-restores-colors ()
+  "A flash swaps the colors an even number of times, twice per flash."
+  (let ((org-timecard-reminder-flash-seconds 0)
+        (swaps 0))
+    (cl-letf (((symbol-function 'invert-face)
+               (lambda (face &optional _frame)
+                 (should (eq face 'default))
+                 (cl-incf swaps))))
+      (let ((inhibit-message t))
+        (org-timecard-flash))
+      (sleep-for 0.1))
+    (should (= swaps (* 2 org-timecard-reminder-flashes)))
+    (should (= swaps 4))))
 
 (ert-deftest org-timecard-example-file-is-current ()
   "The dynamic blocks saved in example.org match what the code produces."

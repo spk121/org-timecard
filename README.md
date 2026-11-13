@@ -6,8 +6,9 @@ builds the reports.
 
 ## Recording time
 
-Each task is a headline with exactly two tags, in this order: the
-charge number, then the labor type.
+Each task is a headline with two tags, in this order: the charge
+number, then the labor type. An optional third tag gives the priority:
+`high`, `medium` or `low`. A task with no priority tag is `medium`.
 
 ```org
 * Work
@@ -16,6 +17,10 @@ charge number, then the labor type.
 **** Laser Assemblies                                         :B101:design:
 :LOGBOOK:
 CLOCK: [2026-11-12 Thu 09:25]--[2026-11-12 Thu 19:25] => 10:00
+:END:
+**** Prepare SRR                                       :A124:analysis:high:
+:LOGBOOK:
+CLOCK: [2026-11-10 Tue 09:23]--[2026-11-10 Tue 19:23] => 10:00
 :END:
 ```
 
@@ -43,7 +48,8 @@ Run these in the timecard's Org buffer. The tables open in the
 | `org-timecard-log-report`    | Every time range, oldest first: time, task, charge, labor |
 | `org-timecard-charge-report` | Hours per day for each charge number                      |
 | `org-timecard-labor-report`  | Hours per day for each labor type                         |
-| `org-timecard-report`        | All three                                                 |
+| `org-timecard-priority-report` | Percentage of each day spent on each priority           |
+| `org-timecard-report`        | All four                                                  |
 
 The same tables can live in the Org file as dynamic blocks. Press
 `C-c C-c` on the `#+BEGIN` line to refresh one, or run
@@ -62,7 +68,7 @@ The same tables can live in the Org file as dynamic blocks. Press
 #+END:
 ```
 
-`:report` is `log`, `charge` or `labor`. `org-timecard-insert-dblock`
+`:report` is `log`, `charge`, `labor` or `priority`. `org-timecard-insert-dblock`
 inserts a block at point.
 
 ## Overlaps and gaps
@@ -79,6 +85,41 @@ Below its table, the log report lists two kinds of remark:
   constant set to 240. Gaps of that length or longer are taken to be
   time off between shifts and are not mentioned.
 
+## Priority
+
+The priority report gives, for each day, the share of that day's
+clocked time spent on each priority. The last row is the share over
+all days.
+
+```org
+| Day            | High | Medium | Low |
+|----------------+------+--------+-----|
+| 2026-11-10 Tue | 100% |        |     |
+| 2026-11-11 Wed |      |   100% |     |
+| 2026-11-12 Thu |      |   100% |     |
+| 2026-11-13 Fri |   3% |        | 97% |
+|----------------+------+--------+-----|
+| All days       |  25% |    48% | 27% |
+```
+
+Percentages are rounded, so a row may add up to 99% or 101%; change
+`org-timecard-percent-format` for more digits.
+
+## Reminder
+
+`org-timecard-reminder-mode` flashes the screen twice, and shows a
+message, as a reminder to update the timecard. To turn it on at
+startup:
+
+```elisp
+(org-timecard-reminder-mode 1)
+```
+
+The flash comes once Emacs has been idle, meaning no keyboard or mouse
+input, for `org-timecard-reminder-minutes`, a constant set to 60. It
+uses Emacs's built-in idle timer and happens once per stretch of idle
+time. `M-x org-timecard-flash` shows the flash on demand.
+
 ## Details
 
 - Hours are decimal; change `org-timecard-hours-format` for a different
@@ -86,8 +127,9 @@ Below its table, the log report lists two kinds of remark:
 - A clock that crosses midnight is split between the two days in the
   day reports.
 - A clock that is still running is left out.
-- A task missing a tag is reported under `(none)`
+- A task missing its charge or labor tag is reported under `(none)`
   (`org-timecard-missing`).
+- A third tag that is not `high`, `medium` or `low` counts as `medium`.
 - Reports cover the accessible part of the buffer, so narrowing to a
   subtree (`C-x n s`) reports on that subtree alone.
 
