@@ -65,6 +65,20 @@ The same tables can live in the Org file as dynamic blocks. Press
 `:report` is `log`, `charge` or `labor`. `org-timecard-insert-dblock`
 inserts a block at point.
 
+## Overlaps and gaps
+
+Below its table, the log report lists two kinds of remark:
+
+```org
+- WARNING: overlap of 0:30, [2026-11-10 Tue 11:30]--[2026-11-10 Tue 12:00], between "A" and "B"
+- Note: gap of 0:45, [2026-11-10 Tue 13:00]--[2026-11-10 Tue 13:45], between "B" and "B"
+```
+
+- A warning for each time range that overlaps an earlier one.
+- A note for each gap shorter than `org-timecard-gap-minutes`, a
+  constant set to 240. Gaps of that length or longer are taken to be
+  time off between shifts and are not mentioned.
+
 ## Details
 
 - Hours are decimal; change `org-timecard-hours-format` for a different

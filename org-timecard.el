@@ -38,6 +38,9 @@
 ;;
 ;; where :report is one of log, charge or labor.
 ;;
+;; The log report also warns about time ranges that overlap, and notes
+;; gaps between ranges shorter than `org-timecard-gap-minutes'.
+;;
 ;; The reports cover the accessible part of the buffer, so narrowing to
 ;; a subtree restricts them to that subtree.
 
@@ -59,6 +62,12 @@
 (defcustom org-timecard-missing "(none)"
   "Text shown for a task that has no charge number or no labor type."
   :type 'string)
+
+(defconst org-timecard-gap-minutes 240
+  "Longest gap, in minutes, that the log report points out.
+A gap between one time range and the next that is shorter than this is
+noted in the report.  Longer gaps are taken to be time off between
+shifts and are not mentioned.")
 
 (defcustom org-timecard-buffer-name "*Org Timecard*"
   "Name of the buffer in which the report commands show their tables."
@@ -115,16 +124,58 @@ Return a list of (DAY . SECONDS), where DAY is a string such as
   (append
    (list '("Time" "Task" "Charge" "Labor") 'hline)
    (mapcar (lambda (e)
-             (list (concat
-                    (format-time-string "[%Y-%m-%d %a %H:%M]"
-                                        (plist-get e :start))
-                    "--"
-                    (format-time-string "[%Y-%m-%d %a %H:%M]"
-                                        (plist-get e :end)))
+             (list (concat (org-timecard--stamp (plist-get e :start))
+                           "--"
+                           (org-timecard--stamp (plist-get e :end)))
                    (plist-get e :task)
                    (plist-get e :charge)
                    (plist-get e :labor)))
            entries)))
+
+(defun org-timecard--stamp (time)
+  "Format TIME as an inactive Org timestamp."
+  (format-time-string "[%Y-%m-%d %a %H:%M]" time))
+
+(defun org-timecard--log-notes (entries)
+  "Return a list of remarks about overlaps and short gaps in ENTRIES.
+ENTRIES must be sorted by start time.  Each time range is compared with
+the latest-ending range before it.  An overlap gives a warning.  A gap
+shorter than `org-timecard-gap-minutes' gives a note."
+  (let (notes last)
+    (dolist (e entries)
+      (when last
+        (let* ((start (plist-get e :start))
+               (end (plist-get e :end))
+               (last-end (plist-get last :end))
+               (tasks (format "\"%s\" and \"%s\""
+                              (plist-get last :task) (plist-get e :task))))
+          (cond
+           ((time-less-p start last-end)
+            (let ((stop (if (time-less-p end last-end) end last-end)))
+              (push (format "WARNING: overlap of %s, %s--%s, between %s"
+                            (org-timecard--span start stop)
+                            (org-timecard--stamp start)
+                            (org-timecard--stamp stop)
+                            tasks)
+                    notes)))
+           ((and (time-less-p last-end start)
+                 (< (float-time (time-subtract start last-end))
+                    (* 60 org-timecard-gap-minutes)))
+            (push (format "Note: gap of %s, %s--%s, between %s"
+                          (org-timecard--span last-end start)
+                          (org-timecard--stamp last-end)
+                          (org-timecard--stamp start)
+                          tasks)
+                  notes)))))
+      (when (or (null last)
+                (time-less-p (plist-get last :end) (plist-get e :end)))
+        (setq last e)))
+    (nreverse notes)))
+
+(defun org-timecard--span (start end)
+  "Format the length of time from START to END as H:MM."
+  (let ((minutes (round (float-time (time-subtract end start)) 60)))
+    (format "%d:%02d" (/ minutes 60) (% minutes 60))))
 
 (defun org-timecard--pivot-table (entries key)
   "Return a table of hours per day for ENTRIES, with one column per KEY value.
@@ -159,19 +210,26 @@ KEY is :charge or :labor."
        (mapcar (lambda (day) (funcall row day (list day))) days)
        (list 'hline (funcall row "Total" days))))))
 
-(defun org-timecard--table (report)
-  "Return the table for REPORT, one of the symbols log, charge or labor."
-  (let ((entries (org-timecard--entries)))
-    (pcase report
-      ('log (org-timecard--log-table entries))
-      ('charge (org-timecard--pivot-table entries :charge))
-      ('labor (org-timecard--pivot-table entries :labor))
-      (_ (user-error "Unknown timecard report: %s" report)))))
-
-(defun org-timecard--insert-table (table)
-  "Insert TABLE at point as an aligned Org table."
-  (insert (orgtbl-to-orgtbl table nil))
-  (org-table-align))
+(defun org-timecard--render (report)
+  "Return the text of REPORT, one of the symbols log, charge or labor.
+The text is an aligned Org table.  For the log report it is followed by
+a list of overlap warnings and gap notes, if there are any."
+  (let* ((entries (org-timecard--entries))
+         (table (pcase report
+                  ('log (org-timecard--log-table entries))
+                  ('charge (org-timecard--pivot-table entries :charge))
+                  ('labor (org-timecard--pivot-table entries :labor))
+                  (_ (user-error "Unknown timecard report: %s" report))))
+         (notes (and (eq report 'log) (org-timecard--log-notes entries))))
+    (with-temp-buffer
+      (insert (orgtbl-to-orgtbl table nil))
+      (org-table-align)
+      (goto-char (point-max))
+      (when notes
+        (insert "\n")
+        (dolist (note notes)
+          (insert "\n- " note)))
+      (buffer-string))))
 
 ;;;; Commands
 
@@ -184,7 +242,7 @@ KEY is :charge or :labor."
   "Show REPORTS, a list of report symbols, for the current buffer."
   (unless (derived-mode-p 'org-mode)
     (user-error "Not in an Org buffer"))
-  (let ((tables (mapcar (lambda (r) (cons r (org-timecard--table r)))
+  (let ((tables (mapcar (lambda (r) (cons r (org-timecard--render r)))
                         reports))
         (source (buffer-name)))
     (with-current-buffer (get-buffer-create org-timecard-buffer-name)
@@ -194,16 +252,16 @@ KEY is :charge or :labor."
         (insert "#+TITLE: Timecard for " source "\n")
         (dolist (tbl tables)
           (insert "\n* " (cdr (assq (car tbl) org-timecard--titles)) "\n\n")
-          (org-timecard--insert-table (cdr tbl))
-          (goto-char (point-max))
-          (insert "\n"))
+          (insert (cdr tbl) "\n"))
         (goto-char (point-min)))
       (pop-to-buffer (current-buffer)))))
 
 ;;;###autoload
 (defun org-timecard-log-report ()
   "Show every clocked time range in chronological order.
-The columns are the time range, task name, charge number and labor type."
+The columns are the time range, task name, charge number and labor type.
+Below the table, warn about time ranges that overlap and note any gap
+between ranges that is shorter than `org-timecard-gap-minutes'."
   (interactive)
   (org-timecard--show '(log)))
 
@@ -233,8 +291,8 @@ The columns are the time range, task name, charge number and labor type."
 PARAMS is the block's property list; :report selects the table and is
 one of log (the default), charge or labor."
   (let ((report (or (plist-get params :report) 'log)))
-    (org-timecard--insert-table
-     (org-timecard--table (if (stringp report) (intern report) report)))))
+    (insert (org-timecard--render
+             (if (stringp report) (intern report) report)))))
 
 ;;;###autoload
 (defun org-timecard-insert-dblock (report)
