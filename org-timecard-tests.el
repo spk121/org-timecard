@@ -9,8 +9,8 @@
 
 ;; Run with `make test', or:
 ;;
-;;     emacs --batch -Q -L . -l org-timecard-tests.el \
-;;           -f ert-run-tests-batch-and-exit
+;;     emacs --batch -Q -L . --eval "(setq load-prefer-newer t)" \
+;;           -l org-timecard-tests.el -f ert-run-tests-batch-and-exit
 
 ;;; Code:
 
@@ -171,6 +171,17 @@ CLOCK: [2026-11-10 Tue 09:00]--[2026-11-10 Tue 10:00] =>  1:00
          "Prepare SRR" "A124" "analysis")
         ("[2026-11-13 Fri 08:22]--[2026-11-13 Fri 19:21]"
          "Weekly IPT Meeting" "A122" "status"))))))
+
+(ert-deftest org-timecard-log-table-escapes-pipes ()
+  "A \"|\" in a task name must not start a new table column."
+  (org-timecard-tests--with-org "\
+* Design A | B :X1:ops:
+CLOCK: [2026-11-10 Tue 09:00]--[2026-11-10 Tue 10:00] =>  1:00
+"
+    (should (equal (org-timecard--render 'log) "\
+| Time                                           | Task               | Charge | Labor |
+|------------------------------------------------+--------------------+--------+-------|
+| [2026-11-10 Tue 09:00]--[2026-11-10 Tue 10:00] | Design A \\vert{} B | X1     | ops   |"))))
 
 (ert-deftest org-timecard-charge-table ()
   (org-timecard-tests--with-org org-timecard-tests--week

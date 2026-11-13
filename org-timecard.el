@@ -165,7 +165,9 @@ Return a list of (DAY . SECONDS), where DAY is a string such as
              (list (concat (org-timecard--stamp (plist-get e :start))
                            "--"
                            (org-timecard--stamp (plist-get e :end)))
-                   (plist-get e :task)
+                   ;; A literal "|" would start a new table column.
+                   (replace-regexp-in-string "|" "\\vert{}"
+                                             (plist-get e :task) t t)
                    (plist-get e :charge)
                    (plist-get e :labor)))
            entries)))
