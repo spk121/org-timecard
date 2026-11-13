@@ -90,3 +90,12 @@ Below its table, the log report lists two kinds of remark:
   (`org-timecard-missing`).
 - Reports cover the accessible part of the buffer, so narrowing to a
   subtree (`C-x n s`) reports on that subtree alone.
+
+## Tests
+
+```bash
+make test
+```
+
+runs the ERT suite in `org-timecard-tests.el`. `make compile`
+byte-compiles `org-timecard.el` with warnings treated as errors.
