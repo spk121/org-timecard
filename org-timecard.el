@@ -48,8 +48,8 @@
 ;; a subtree restricts them to that subtree.
 ;;
 ;; M-x org-timecard-reminder-mode flashes the screen as a reminder to
-;; update the timecard once Emacs has been idle, with no keyboard or
-;; mouse input, for `org-timecard-reminder-minutes'.
+;; update the timecard each time Emacs has been idle, with no keyboard
+;; or mouse input, for another `org-timecard-reminder-minutes'.
 
 ;;; Code:
 
@@ -87,8 +87,9 @@ shifts and are not mentioned.")
   :type 'string)
 
 (defconst org-timecard-reminder-minutes 60
-  "Minutes of idle time after which `org-timecard-reminder-mode' flashes.
-Idle time is the time since the last keyboard or mouse input.")
+  "Minutes of idle time between flashes of `org-timecard-reminder-mode'.
+Idle time is the time since the last keyboard or mouse input.  The
+screen flashes each time another this many minutes of it have passed.")
 
 (defconst org-timecard-reminder-flashes 2
   "Number of times the screen flashes for a timecard reminder.")
@@ -390,7 +391,32 @@ one of log (the default), charge, labor or priority."
 ;;;; Reminder
 
 (defvar org-timecard--reminder-timer nil
-  "The idle timer of `org-timecard-reminder-mode', or nil.")
+  "The idle timer of `org-timecard-reminder-mode', or nil.
+It gives the first flash of each stretch of idle time.")
+
+(defvar org-timecard--reminder-repeat-timer nil
+  "The timer giving the later flashes of a stretch of idle time, or nil.")
+
+(defun org-timecard--reminder-stop-repeat ()
+  "Cancel the timer that repeats the reminder, if there is one."
+  (when org-timecard--reminder-repeat-timer
+    (cancel-timer org-timecard--reminder-repeat-timer)
+    (setq org-timecard--reminder-repeat-timer nil)))
+
+(defun org-timecard--reminder-first ()
+  "Give the first reminder of a stretch of idle time and schedule the rest."
+  (org-timecard--reminder-stop-repeat)
+  (let ((seconds (* 60 org-timecard-reminder-minutes)))
+    (setq org-timecard--reminder-repeat-timer
+          (run-with-timer seconds seconds #'org-timecard--reminder-again)))
+  (org-timecard-flash))
+
+(defun org-timecard--reminder-again ()
+  "Give a later reminder, or stop repeating if the idle stretch has ended."
+  (let ((idle (current-idle-time)))
+    (if (and idle (>= (float-time idle) (* 60 org-timecard-reminder-minutes)))
+        (org-timecard-flash)
+      (org-timecard--reminder-stop-repeat))))
 
 (defun org-timecard-flash ()
   "Flash the screen as a reminder to update the timecard.
@@ -405,18 +431,19 @@ The colors of every frame are swapped and restored
 ;;;###autoload
 (define-minor-mode org-timecard-reminder-mode
   "Flash the screen when it is time to update the timecard.
-The flash comes once Emacs has been idle, with no keyboard or mouse
-input, for `org-timecard-reminder-minutes'.  It happens once for each
-stretch of idle time."
+The flash comes when Emacs has been idle, with no keyboard or mouse
+input, for `org-timecard-reminder-minutes', and again each time that
+many more minutes pass, until there is input."
   :global t
   :group 'org-timecard
   (when org-timecard--reminder-timer
     (cancel-timer org-timecard--reminder-timer)
     (setq org-timecard--reminder-timer nil))
+  (org-timecard--reminder-stop-repeat)
   (when org-timecard-reminder-mode
     (setq org-timecard--reminder-timer
           (run-with-idle-timer (* 60 org-timecard-reminder-minutes) t
-                               #'org-timecard-flash))))
+                               #'org-timecard--reminder-first))))
 
 (provide 'org-timecard)
 

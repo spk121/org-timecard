@@ -534,7 +534,7 @@ CLOCK: [2026-11-10 Tue 09:30]--[2026-11-10 Tue 11:00] =>  1:30
           (should (memq timer timer-idle-list))
           (should (= 3600 (float-time (timer--time timer))))
           (should (timer--repeat-delay timer))
-          (should (eq (timer--function timer) #'org-timecard-flash))
+          (should (eq (timer--function timer) #'org-timecard--reminder-first))
           ;; Turning it on twice must not leave a second timer behind.
           (org-timecard-reminder-mode 1)
           (should-not (memq timer timer-idle-list))
@@ -543,6 +543,62 @@ CLOCK: [2026-11-10 Tue 09:30]--[2026-11-10 Tue 11:00] =>  1:30
           (should-not (memq timer timer-idle-list))
           (should-not org-timecard--reminder-timer)))
     (org-timecard-reminder-mode -1)))
+
+(ert-deftest org-timecard-reminder-repeats-while-idle ()
+  "The reminder repeats every 60 minutes until the idle stretch ends."
+  (let ((flashes 0)
+        (idle nil))
+    (cl-letf (((symbol-function 'org-timecard-flash)
+               (lambda () (cl-incf flashes)))
+              ((symbol-function 'current-idle-time)
+               (lambda () (and idle (seconds-to-time idle)))))
+      (unwind-protect
+          (progn
+            ;; 60 minutes idle: flash, and a repeating timer starts.
+            (org-timecard--reminder-first)
+            (should (= flashes 1))
+            (let ((timer org-timecard--reminder-repeat-timer))
+              (should (memq timer timer-list))
+              (should (= 3600 (timer--repeat-delay timer)))
+              (should (eq (timer--function timer)
+                          #'org-timecard--reminder-again))
+              ;; 120 and 180 minutes idle: flash again each time.
+              (setq idle 7200)
+              (org-timecard--reminder-again)
+              (setq idle 10800)
+              (org-timecard--reminder-again)
+              (should (= flashes 3))
+              (should (memq timer timer-list))
+              ;; There was input 50 minutes ago: no flash, repeating stops.
+              (setq idle 3000)
+              (org-timecard--reminder-again)
+              (should (= flashes 3))
+              (should-not (memq timer timer-list))
+              (should-not org-timecard--reminder-repeat-timer))
+            ;; A new stretch starts over, with a single repeating timer.
+            (org-timecard--reminder-first)
+            (let ((timer org-timecard--reminder-repeat-timer))
+              (org-timecard--reminder-first)
+              (should-not (memq timer timer-list)))
+            (should (= flashes 5))
+            ;; Not idle at all: repeating stops.
+            (setq idle nil)
+            (org-timecard--reminder-again)
+            (should (= flashes 5))
+            (should-not org-timecard--reminder-repeat-timer))
+        (org-timecard--reminder-stop-repeat)))))
+
+(ert-deftest org-timecard-reminder-mode-off-stops-repeat ()
+  (cl-letf (((symbol-function 'org-timecard-flash) #'ignore))
+    (unwind-protect
+        (progn
+          (org-timecard-reminder-mode 1)
+          (org-timecard--reminder-first)
+          (let ((timer org-timecard--reminder-repeat-timer))
+            (org-timecard-reminder-mode -1)
+            (should-not (memq timer timer-list))
+            (should-not org-timecard--reminder-repeat-timer)))
+      (org-timecard-reminder-mode -1))))
 
 (ert-deftest org-timecard-flash-restores-colors ()
   "A flash swaps the colors an even number of times, twice per flash."

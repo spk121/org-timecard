@@ -115,10 +115,10 @@ startup:
 (org-timecard-reminder-mode 1)
 ```
 
-The flash comes once Emacs has been idle, meaning no keyboard or mouse
+The flash comes when Emacs has been idle, meaning no keyboard or mouse
 input, for `org-timecard-reminder-minutes`, a constant set to 60. It
-uses Emacs's built-in idle timer and happens once per stretch of idle
-time. `M-x org-timecard-flash` shows the flash on demand.
+then repeats every 60 minutes for as long as Emacs stays idle. Any
+input ends the idle stretch and starts the count again. `M-x org-timecard-flash` shows the flash on demand.
 
 ## Details
 
