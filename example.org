@@ -1,0 +1,58 @@
+* Work
+** Project1
+*** System Engineering
+**** Weekly IPT Meeting                                       :A122:status:
+:LOGBOOK:
+CLOCK: [2026-11-13 Fri 08:22]--[2026-11-13 Fri 19:21] => 10:59
+:END:
+**** Prepare SRR                                            :A124:analysis:
+:LOGBOOK:
+CLOCK: [2026-11-13 Fri 08:01]--[2026-11-13 Fri 08:22] =>  0:21
+CLOCK: [2026-11-10 Tue 09:23]--[2026-11-10 Tue 19:23] => 10:00
+:END:
+*** Training
+**** Ethics training                                    :TRN100:training:
+** Project2
+*** Program Management
+**** Weekly Status Meeting                                :B100:management:
+:LOGBOOK:
+CLOCK: [2026-11-11 Wed 09:23]--[2026-11-11 Wed 19:23] => 10:00
+:END:
+*** Electrical Engineering
+**** Laser Assemblies                                         :B101:design:
+:LOGBOOK:
+CLOCK: [2026-11-12 Thu 09:25]--[2026-11-12 Thu 19:25] => 10:00
+:END:
+* Reports
+** Time log
+#+BEGIN: timecard :report log
+| Time                                           | Task                  | Charge | Labor      |
+|------------------------------------------------+-----------------------+--------+------------|
+| [2026-11-10 Tue 09:23]--[2026-11-10 Tue 19:23] | Prepare SRR           | A124   | analysis   |
+| [2026-11-11 Wed 09:23]--[2026-11-11 Wed 19:23] | Weekly Status Meeting | B100   | management |
+| [2026-11-12 Thu 09:25]--[2026-11-12 Thu 19:25] | Laser Assemblies      | B101   | design     |
+| [2026-11-13 Fri 08:01]--[2026-11-13 Fri 08:22] | Prepare SRR           | A124   | analysis   |
+| [2026-11-13 Fri 08:22]--[2026-11-13 Fri 19:21] | Weekly IPT Meeting    | A122   | status     |
+#+END:
+** Hours by day and charge number
+#+BEGIN: timecard :report charge
+| Day            |  A122 |  A124 |  B100 |  B101 | Total |
+|----------------+-------+-------+-------+-------+-------|
+| 2026-11-10 Tue |       | 10.00 |       |       | 10.00 |
+| 2026-11-11 Wed |       |       | 10.00 |       | 10.00 |
+| 2026-11-12 Thu |       |       |       | 10.00 | 10.00 |
+| 2026-11-13 Fri | 10.98 |  0.35 |       |       | 11.33 |
+|----------------+-------+-------+-------+-------+-------|
+| Total          | 10.98 | 10.35 | 10.00 | 10.00 | 41.33 |
+#+END:
+** Hours by day and labor type
+#+BEGIN: timecard :report labor
+| Day            | analysis | design | management | status | Total |
+|----------------+----------+--------+------------+--------+-------|
+| 2026-11-10 Tue |    10.00 |        |            |        | 10.00 |
+| 2026-11-11 Wed |          |        |      10.00 |        | 10.00 |
+| 2026-11-12 Thu |          |  10.00 |            |        | 10.00 |
+| 2026-11-13 Fri |     0.35 |        |            |  10.98 | 11.33 |
+|----------------+----------+--------+------------+--------+-------|
+| Total          |    10.35 |  10.00 |      10.00 |  10.98 | 41.33 |
+#+END:
