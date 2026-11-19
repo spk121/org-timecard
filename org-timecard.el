@@ -367,6 +367,35 @@ between ranges that is shorter than `org-timecard-gap-minutes'."
   (interactive)
   (org-timecard--show '(log charge labor priority)))
 
+;;;###autoload
+(defun org-timecard-clean ()
+  "Remove clock data and clear dynamic-block contents in the current Org buffer."
+  (interactive)
+  (unless (derived-mode-p 'org-mode)
+    (user-error "Not in an Org buffer"))
+  (let ((case-fold-search t))
+    (save-excursion
+      (goto-char (point-min))
+      (while (re-search-forward "^[ \t]*:LOGBOOK:[ \t]*$" nil t)
+        (let ((start (line-beginning-position)))
+          (if (re-search-forward "^[ \t]*:END:[ \t]*$" nil t)
+              (progn
+                (forward-line 1)
+                (delete-region start (point))
+                (goto-char start))
+            (goto-char start)
+            (forward-line 1))))
+      (goto-char (point-min))
+      (while (re-search-forward "^#\\+BEGIN:.*$" nil t)
+        (forward-line 1)
+        (let ((start (point)))
+          (if (re-search-forward "^#\\+END:[ \t]*$" nil t)
+              (let ((end (line-beginning-position)))
+                (delete-region start end)
+                (goto-char start)
+                (forward-line 1))
+            (goto-char start)))))))
+
 ;;;; Dynamic block
 
 ;;;###autoload

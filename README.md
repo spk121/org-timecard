@@ -71,6 +71,12 @@ The same tables can live in the Org file as dynamic blocks. Press
 `:report` is `log`, `charge`, `labor` or `priority`. `org-timecard-insert-dblock`
 inserts a block at point.
 
+## Starting a new week
+
+Run `M-x org-timecard-clean` to remove clock data from `:LOGBOOK:` blocks
+and clear the contents of dynamic report blocks. It leaves the report
+block markers in place so they can be refreshed for the next week.
+
 ## Overlaps and gaps
 
 Below its table, the log report lists two kinds of remark:
