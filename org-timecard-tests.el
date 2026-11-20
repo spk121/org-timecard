@@ -532,6 +532,34 @@ CLOCK: [2026-11-10 Tue 09:30]--[2026-11-10 Tue 11:00] =>  1:30
   (with-temp-buffer
     (should-error (org-timecard-log-report) :type 'user-error)))
 
+(ert-deftest org-timecard-clean-removes-clock-data-and-report-contents ()
+  (org-timecard-tests--with-org "\
+* Task
+:LOGBOOK:
+CLOCK: [2026-11-10 Tue 09:00]--[2026-11-10 Tue 10:00] =>  1:00
+:END:
+Keep this note.
+#+BEGIN: timecard :report log
+| Stale report |
+#+END:
+#+BEGIN: timecard :report charge
+old contents
+#+END:
+"
+    (org-timecard-clean)
+    (should (equal (buffer-string) "\
+* Task
+Keep this note.
+#+BEGIN: timecard :report log
+#+END:
+#+BEGIN: timecard :report charge
+#+END:
+"))))
+
+(ert-deftest org-timecard-clean-needs-org-buffer ()
+  (with-temp-buffer
+    (should-error (org-timecard-clean) :type 'user-error)))
+
 ;;;; Reminder
 
 (ert-deftest org-timecard-reminder-minutes-is-60 ()
